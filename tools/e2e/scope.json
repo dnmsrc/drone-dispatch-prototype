@@ -1,0 +1,108 @@
+{
+  "note": "影响面 → 该跑哪些脚本（2026-10-29 用户指出：改部分文案不该全量跑）。跑之前先按改动文件挑脚本；只有改动落在共用组件 / 共用 CSS / 确认门时才升级到全量。status: green = 本会话实测通过；stale = 断言的是已被放弃的设计（默认跳过并警告）；unverified = 未在本会话验证过，跑之前说明一下。",
+  "scripts": {
+    "verify-consult.mjs": {
+      "status": "green",
+      "why": "第 5 步人工咨询派单的双端闭环：用户只能提交咨询单与确认派单，接待与创建派单必须在 admin「咨询受理」工作台真实操作（六项必填缺一即拦）；用户侧无任何演示入口；另含重复申请冲突废弃、我的预约、首页询问层",
+      "match": ["h5/src/pages/apply/consult.vue", "h5/src/pages/consult/*.vue", "h5/src/pages/index/*.vue", "h5/src/engine/consult.js", "admin/src/views/consult/*.vue", "mock-server/*", "docs/consult-workflow.md", "tools/e2e/verify-consult.mjs"]
+    },
+    "smoke-consult-api.mjs": {
+      "status": "green",
+      "why": "咨询单状态机与人工派单接口冒烟：接待/派单/确认顺序不可跳步、六项缺项即拒、重复提交 40901 与旧单自动废弃、越权与未登录边界",
+      "match": ["mock-server/*", "docs/consult-workflow.md", "tools/e2e/smoke-consult-api.mjs"]
+    },
+    "verify-ackflow.mjs": {
+      "status": "green",
+      "why": "下一步统一确认 + 留痕 + 右下角回看 + 门（DOM 实测 + 负控）；选择/输入时弹窗数必须为 0",
+      "match": ["h5/src/components/EntryChip.vue", "h5/src/components/SecHead.vue", "h5/src/components/BasisPop.vue", "h5/src/mixins/ackPop.js", "h5/src/engine/disclosure.js", "h5/src/store/index.js", "h5/src/pages/apply/*.vue", "tools/e2e/verify-ackflow.mjs"]
+    },
+    "verify-gate.mjs": {
+      "status": "green",
+      "why": "各步门逐页验证：填写不弹窗；没确认点下一步必须拦住且弹窗阻断；确认完必须放行",
+      "match": ["h5/src/mixins/ackPop.js", "h5/src/components/BasisPop.vue", "h5/src/pages/apply/*.vue", "h5/src/engine/disclosure.js", "tools/e2e/verify-gate.mjs"]
+    },
+    "audit-overlap.mjs": {
+      "status": "green",
+      "why": "遮挡判据：滚到底后，任何 position:fixed 可见元素（悬浮入口/底栏/TabBar）不得与卡片正文 rect 相交；卡片直接子块左右都必须落在 padding box 内。全站 11 页",
+      "match": ["h5/src/components/AckDock.vue", "h5/src/components/NavBar.vue", "h5/src/components/TabBar.vue", "h5/src/**/*.vue", "tools/e2e/audit-overlap.mjs"]
+    },
+    "audit-unify.mjs": {
+      "status": "green",
+      "why": "全站控件/文本规范判据（2026-11-03 用户指出「我的预约」页 UI 有问题后新增）：A 同一 flex 行按钮宽度一致（≤2rpx）、B 同类按钮内边距一致、C 文字不被裁、D 正文对比度 ≥4.5:1（大字号 ≥3:1）、E 键值行标签列宽一致。全站 12 页，负控在脚本里",
+      "match": ["h5/src/**/*.vue", "h5/src/App.vue", "tools/e2e/audit-unify.mjs"]
+    },
+    "audit-center.mjs": {
+      "status": "green",
+      "why": "按钮文字几何居中（2026-11-03 用户截图指出「我的预约」空态按钮文字偏上后新增）：取控件内内容块（文本节点 Range + 子元素 rect 的 union bbox）中心 vs 控件盒中心，垂直/水平偏差 >1.5px 判失败；「文字 + 箭头」按组合整体居中算，不按单个文字 rect 算。背景：uni-app 默认 uni-button 是 display:block，行高压回 1.5 后，高度靠 min-height 撑到 44px、字号 12–15px 的按钮文字会贴顶（实测偏上 12px）。全站 14 页",
+      "match": ["h5/src/**/*.vue", "h5/src/App.vue", "h5/src/components/EntryChip.vue", "tools/e2e/audit-center.mjs"]
+    },
+    "audit-template-refs.mjs": {
+      "status": "green",
+      "why": "静态判据：选项式 API 下模板里直接调用的函数必须挂在 methods/computed/data/props/mixins 上。只 import 不进 methods → 模板求值抛 `is not a function`，Vue 把该节点渲染成 <!---->，整行静默消失（我的预约页报价行/派单号行就是这么没的）",
+      "match": ["h5/src/**/*.vue", "h5/src/mixins/*", "tools/e2e/audit-template-refs.mjs"]
+    },
+    "audit-render-errors.mjs": {
+      "status": "green",
+      "why": "运行时判据：逐页真跑并收集 console 里的 TypeError / Vue warn / is not a function。静态分析会漏 mixin 简写与运行时才取值的表达式，所以运行时那一条必须真跑；改任何模板都要过",
+      "match": ["h5/src/**/*.vue", "h5/src/components/*.vue", "h5/src/mixins/*", "tools/e2e/audit-render-errors.mjs"]
+    },
+    "verify-spacing.mjs": {
+      "status": "green",
+      "why": "结构判据量的是 DOM rect，共用 CSS / 共用组件的改动会改到所有页的 rect —— 单页文案改动只跑那一页，共用文件改动才跑全套",
+      "match": ["h5/src/**/*.vue", "h5/src/App.vue", "h5/src/styles/*", "tools/e2e/verify-spacing.mjs"],
+      "narrow": "page"
+    },
+    "run.mjs": {
+      "status": "unverified",
+      "why": "主流程 17 项（订单/退款/看板侧）；本轮（2026-11-03）跑批时序不稳：第二次跑在「未登录拦截+模拟微信授权」一步超时，前一次卡在退款试算；已加步骤级 75s 超时兜底与初始导航，但整轮尚未跑完，不能当作通过信号",
+      "match": ["h5/src/engine/*", "h5/src/store/index.js", "mock-server/*", "h5/src/mixins/ackPop.js", "h5/src/components/BasisPop.vue", "h5/src/components/EntryChip.vue", "tools/e2e/run.mjs"]
+    },
+    "verify-order.mjs": {
+      "status": "green",
+      "why": "顺序与形态判据。填报页只留输入/选项，选择时不弹窗、下一步才确认；F 段真走一遍签署再看存证。天气 mock 决定日历是否有可提交日，也纳入本脚本回归。",
+      "match": ["h5/src/pages/apply/*.vue", "h5/src/pages/apply/disclosure.vue", "h5/src/pages/apply/contract.vue", "h5/src/engine/weather.js", "tools/e2e/verify-order.mjs"]
+    },
+    "verify-proto-tip.mjs": {
+      "status": "green",
+      "why": "评审浮层：徽章位置 + 悬浮展开 + 随路由切换。文案改了也要跑，因为 tips 是页面上的实际内容（本会话 9/9）。",
+      "match": ["h5/src/proto-tip.js", "admin/src/components/ProtoTip.vue", "tools/e2e/verify-proto-tip.mjs"]
+    },
+    "verify-calendar.mjs": {
+      "status": "green",
+      "why": "日期页四项口径（2026-11-02）：① 日历按月切片，单月 ≤31 格、翻页不重复同月（修「超过 40 天」）② 标签按真实口径：具体天气按时段给、提前量按工作日、待定只在超出预报期 ③ 图例与格子状态色真的生效 ④ 超出预报期允许预约但下一步必须同意改期风险并留痕、已过去的日子不渲染；六条负控",
+      "match": ["h5/src/components/ApplyCalendar.vue", "h5/src/engine/calendar.js", "h5/src/engine/weather.js", "h5/src/engine/weatherSource.js", "h5/src/pages/apply/date.vue", "h5/src/mixins/ackPop.js", "h5/src/components/BasisPop.vue", "h5/src/store/index.js", "tools/e2e/verify-calendar.mjs"]
+    },
+    "probe-admin-schedule.mjs": {
+      "status": "green",
+      "why": "后台档期页改版（2026-11-03）：时段是整点区间、选好即渲染条目（无复选框）、删除/添加即时生效、起止选择器只给 24 个整点、单日与批量共用一套交互、配置页同样条目式；8 项判据 + 接口清理",
+      "match": ["admin/src/views/schedule/index.vue", "admin/src/utils/slot.js", "admin/src/views/system/config.vue", "mock-server/*", "h5/src/engine/slotRange.js", "tools/e2e/probe-admin-schedule.mjs"]
+    },
+    "probe-h5-schedule.mjs": {
+      "status": "green",
+      "why": "C 端时段配置驱动：后台配几段用户就看几段、全删等于当日停接、任意区间渲染、清理后回默认（4 项）",
+      "match": ["admin/src/views/schedule/index.vue", "mock-server/*", "h5/src/engine/slotRange.js", "h5/src/pages/apply/date.vue", "tools/e2e/probe-h5-schedule.mjs"]
+    },
+    "probe-schedule-guard.mjs": {
+      "status": "green",
+      "why": "档期约束 + 条目视觉（2026-11-03 二次口径）：① 已订时段无删除按钮、带锁、后端拒撤回 ② 已订日期「设为休整日」置灰且后端拒 ③ 批量配置不许覆盖已单独配置的日期、休整日，多选点选被拦、全选自动跳过并提示 ④ 条目撑满弹窗、同行横向间距 12px、换行纵向间距 12px、两列等宽、右侧操作贴右；21 项含接口/UI/视觉 rect 判据与清理",
+      "match": ["admin/src/views/schedule/index.vue", "mock-server/*", "tools/e2e/probe-schedule-guard.mjs"]
+    },
+    "probe-slot-overlap-scroll.mjs": {
+      "status": "green",
+      "why": "时段重叠与弹窗滚动条（2026-11-03 三次口径）：① 相同/部分覆盖/包含的时段一律拒绝（接口 + 单日弹窗内添加），首尾相接（19-20 与 20-21）必须放行 ② 与已有订单的时段重叠也拒，文案带日期与已订段 ③ 默认时段同样不许重叠 ④ 单日/批量（3 段与 6 段）弹窗在 1366×768 下整页与遮罩都不出现滚动条，批量条目为等宽双列、间距 12；14 项含清理",
+      "match": ["admin/src/views/schedule/index.vue", "mock-server/*", "tools/e2e/probe-slot-overlap-scroll.mjs"]
+    },
+    "measure-dialog-scroll.mjs": {
+      "status": "green",
+      "why": "量档期两个弹窗的高度与滚动条（3/6/12 段 × 1680×900、1366×768、1280×720）：输出整页滚动、遮罩滚动、body 内部滚动与条目网格列宽，改弹窗高度后先用它看数再下判据",
+      "match": ["admin/src/views/schedule/index.vue", "tools/e2e/measure-dialog-scroll.mjs"]
+    },
+    "verify-stepbar.mjs": { "status": "unverified", "match": ["h5/src/components/StepBar.vue", "h5/src/pages/apply/*.vue"] },
+    "verify-topbar.mjs": { "status": "unverified", "match": ["h5/src/components/NavBar.vue", "h5/src/pages/*/*.vue"] },
+    "verify-fit.mjs": { "status": "unverified", "match": ["h5/src/pages/*/*.vue", "h5/src/styles/*"] },
+    "verify-responsive.mjs": { "status": "unverified", "match": ["h5/src/styles/*", "h5/src/App.vue"] },
+    "verify-apply-restore.mjs": { "status": "unverified", "match": ["h5/src/store/index.js", "h5/src/pages/apply/*.vue"] },
+    "verify-stepback.mjs": { "status": "unverified", "match": ["h5/src/store/index.js", "h5/src/pages/apply/*.vue"] }
+  },
+  "probeScripts": "probe-*.mjs / shot-*.mjs / crop-*.mjs / inspect-*.mjs / analyze-*.mjs 是探针、截图与像素分析，不是判据：不进影响面，只在需要看某一页时手动跑。audit-*.mjs 已经升级成判据（见上）。"
+}

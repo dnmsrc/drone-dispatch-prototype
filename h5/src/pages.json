@@ -1,0 +1,31 @@
+{
+  "pages": [
+    { "path": "pages/index/index", "style": { "navigationStyle": "custom", "disableScroll": false } },
+    { "path": "pages/apply/disclosure", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/venue", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/need", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/date", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/quote", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/consult", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/contract", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/pay", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/apply/progress", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/consult/index", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/create", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/confirm", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/cashier", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/result", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/list", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/detail", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/refund", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/review", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/order/gallery", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/user/index", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/login/login", "style": { "navigationStyle": "custom" } }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#F6F7FB",
+    "backgroundTextStyle": "dark"
+  }
+}

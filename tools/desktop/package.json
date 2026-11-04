@@ -1,0 +1,66 @@
+{
+  "name": "skyshow-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "星穹 SkyShow · 无人机派单系统（演示版桌面壳）",
+  "author": "SkyShow",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable",
+    "dist:dir": "electron-builder --win dir"
+  },
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.skyshow.demo",
+    "productName": "星穹SkyShow演示",
+    "copyright": "SkyShow Demo",
+    "directories": {
+      "output": "../../../交付/drone-dispatch-prototype",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "shell.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../mock-server",
+        "to": "app-resources/mock-server",
+        "filter": [
+          "server.js",
+          "seed.js",
+          "biz/**/*",
+          "package.json"
+        ]
+      },
+      {
+        "from": "../../h5/dist/build/h5",
+        "to": "app-resources/h5"
+      },
+      {
+        "from": "../../admin/dist",
+        "to": "app-resources/admin"
+      }
+    ],
+    "win": {
+      "icon": "build/icon-256.png",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "星穹SkyShow演示.exe"
+    }
+  }
+}

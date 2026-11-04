@@ -1,0 +1,24 @@
+{
+  "name": "星穹SkyShow",
+  "appid": "",
+  "description": "星穹 SkyShow 无人机编队表演预约平台",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "h5": {
+    "title": "星穹 SkyShow · 无人机编队表演",
+    "router": {
+      "mode": "hash",
+      "base": "./"
+    },
+    "devServer": {
+      "port": 5173
+    }
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": false
+    }
+  }
+}

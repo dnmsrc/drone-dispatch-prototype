@@ -1,0 +1,193 @@
+/* 星穹派单管理后台 - 全局样式（若伊风格） */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+  font-size: 14px;
+  color: #303133;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #f0f2f5;
+}
+
+a {
+  color: #409eff;
+  text-decoration: none;
+}
+
+/* 页面容器与卡片 */
+.page {
+  padding: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title .sub {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 400;
+}
+
+.search-card {
+  padding-bottom: 0;
+}
+
+.search-card .el-form-item {
+  margin-bottom: 16px;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* 金额 */
+.amount-text {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+/* 描述区块标题 */
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin: 20px 0 10px;
+  padding-left: 8px;
+  border-left: 3px solid #409eff;
+  line-height: 1.2;
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
+/* 价格明细 */
+.price-list {
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: #606266;
+  border-bottom: 1px solid #ebeef5;
+  background: #fff;
+}
+
+.price-row:nth-child(odd) {
+  background: #fafafa;
+}
+
+.price-row.total {
+  background: #ecf5ff;
+  color: #303133;
+  font-weight: 600;
+}
+
+/* 过渡动画 */
+.fade-transform-enter-active,
+.fade-transform-leave-active {
+  transition: all 0.3s;
+}
+
+.fade-transform-enter-from {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
+.fade-transform-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ===== 响应式自适应 ===== */
+/* 弹窗 / 消息框 / 日期范围选择器不超出小屏视口 */
+.el-dialog {
+  max-width: calc(100vw - 32px);
+}
+
+.el-message-box {
+  max-width: calc(100vw - 32px);
+}
+
+.el-date-editor--daterange.el-input__wrapper {
+  max-width: 100%;
+}
+
+/* 抽屉（订单详情 620px）不超出小屏视口 */
+.el-drawer {
+  max-width: 100vw;
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 10px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+
+  .card-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .search-card .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  /* 分页器在小屏可横向滚动 */
+  .pager {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+}
