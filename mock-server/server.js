@@ -7,7 +7,15 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { buildSeed, buildDicts, profile, ADMINS, HOLIDAYS, fmtDate, addDays, CONSULT_STATUS_TEXT, DISPATCH_TERMS, DISPATCH_TERM_SPEC } = require('./seed');
+const { buildSeed, buildDicts, buildContracts, profile, ADMINS, HOLIDAYS, fmtDate, addDays, CONSULT_STATUS_TEXT, DISPATCH_TERMS, DISPATCH_TERM_SPEC } = require('./seed');
+const contractDomain = require('./contracts');
+const {
+  splitInstallments,
+  sumPaidAmount,
+  quoteTermination,
+  availableActions: contractActions,
+  round2
+} = contractDomain;
 
 const PORT = process.env.PORT || 8090;
 // 2026-11-04：桌面打包版用环境变量把数据目录与两端构建产物指向 resources / %APPDATA%；
@@ -88,8 +96,13 @@ function migrate() {
   if (!db.meta) db.meta = {};
   // v3：咨询单 / 人工派单（旧数据文件补空数组，示例单只在重新播种时出现）
   if (!Array.isArray(db.consults)) { db.consults = []; changed = true; }
-  if (db.meta.version !== 5) { db.meta.version = 5; changed = true; }
-  if (changed) { save(); console.log('[mock] 数据文件已迁移到 v5（时段改为整点区间）'); }
+  // v6：电子合同（旧数据文件缺合同时，由现有订单一次性派生，后续动作在 routes 内维护）
+  if (!Array.isArray(db.contracts)) {
+    db.contracts = buildContracts(db.orders || []);
+    changed = true;
+  }
+  if (db.meta.version !== 6) { db.meta.version = 6; changed = true; }
+  if (changed) { save(); console.log('[mock] 数据文件已迁移到 v6（新增电子合同）'); }
 }
 function save() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -1043,6 +1056,255 @@ route('POST', '/api/admin/refunds/:orderId/reject', (req, p, body) => {
   save();
   return ok({ order: withUser(o) }, '已拒绝退款');
 });
+
+// ==================== 电子合同（对齐 web/contract 状态机与资金口径） ====================
+function findContract(id) {
+  const c = db.contracts.find(x => x.id === id);
+  if (!c) throw fail('合同不存在', 40400);
+  return c;
+}
+function findContractOrder(c) {
+  const o = db.orders.find(x => x.id === c.orderId);
+  if (!o) throw fail('关联订单不存在，无法联动', 40400);
+  return o;
+}
+/** 合同内嵌订单摘要与真实订单保持同步（动作后调用） */
+function syncContractOrderBrief(c, o) {
+  c.order = {
+    ...c.order,
+    status: o.status,
+    performDate: o.performDate,
+    timeSlot: o.timeSlot,
+    venueName: o.venue?.name || c.order.venueName
+  };
+}
+function contractSeq() {
+  return String(db.contracts.length + 1).padStart(4, '0');
+}
+function buildContractRefundNo(o, suffix) {
+  return `R${o.id.slice(1)}${suffix}`;
+}
+function publicContract(c) {
+  return JSON.parse(JSON.stringify(c));
+}
+
+// 列表：关键词（合同号/订单号/甲方/电话）+ 签署状态，服务端分页；每行内嵌当前角色的操作闸门
+route('GET', '/api/admin/contracts', (req, p, b, query) => {
+  const s = authAdmin(req);
+  const isAdmin = s.role === 'ADMIN';
+  let list = db.contracts.slice();
+  if (query.signStatus) list = list.filter(c => c.signStatus === query.signStatus);
+  const kw = String(query.keyword || '').trim();
+  if (kw) {
+    list = list.filter(c =>
+      c.contractNo.includes(kw) || c.orderId.includes(kw) ||
+      c.partyAName.includes(kw) || c.partyAPhone.includes(kw));
+  }
+  list.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const total = list.length;
+  const page = Math.max(1, Number(query.page) || 1);
+  const size = Math.max(1, Number(query.size) || 10);
+  const start = (page - 1) * size;
+  const rows = list.slice(start, start + size).map(c => ({
+    ...publicContract(c),
+    actions: contractActions(c, isAdmin)
+  }));
+  return ok({ list: rows, total, page, size });
+});
+
+// 详情：含完整付款计划与当前可操作动作
+route('GET', '/api/admin/contracts/:id', (req, p) => {
+  const s = authAdmin(req);
+  const c = findContract(p.id);
+  return ok({ contract: publicContract(c), actions: contractActions(c, s.role === 'ADMIN') });
+});
+
+// 当前可操作动作（操作列闸门）
+route('GET', '/api/admin/contracts/:id/actions', (req, p) => {
+  const s = authAdmin(req);
+  const c = findContract(p.id);
+  return ok({ actions: contractActions(c, s.role === 'ADMIN') });
+});
+
+// 提交签署：DRAFT → PENDING_SIGN
+route('POST', '/api/admin/contracts/:id/submit-sign', (req, p) => {
+  authAdmin(req);
+  const c = findContract(p.id);
+  if (c.signStatus !== 'DRAFT') throw fail('仅草稿状态的合同可提交签署');
+  c.signStatus = 'PENDING_SIGN';
+  c.updatedAt = nowIso();
+  save();
+  return ok({ contract: publicContract(c) }, '已提交，等待客户回签/盖章');
+});
+
+// 上传已签 PDF：PENDING_SIGN → SIGNED（一期电子签过渡方案）
+route('POST', '/api/admin/contracts/:id/upload-pdf', (req, p, body) => {
+  authAdmin(req);
+  const c = findContract(p.id);
+  if (c.signStatus !== 'PENDING_SIGN') throw fail('仅待签署的合同可上传签署件');
+  const url = String(body.pdfUrl || '').trim();
+  if (!url) throw fail('请填写已签署合同 PDF 的地址');
+  const now = nowIso();
+  c.signStatus = 'SIGNED';
+  c.signedPdfUrl = url;
+  c.partyASignedAt = now;
+  c.partyBSignedAt = now;
+  c.signedAt = now;
+  c.updatedAt = now;
+  save();
+  return ok({ contract: publicContract(c) }, '签署件已上传，合同置为已签署');
+});
+
+// 作废：仅限未生效或生效但零付款，无资金动作
+route('POST', '/api/admin/contracts/:id/void', (req, p, body) => {
+  authAdmin(req);
+  const c = findContract(p.id);
+  const reason = String(body.voidReason || '').trim();
+  if (!reason) throw fail('请填写作废原因');
+  if (c.signStatus === 'VOID') throw fail('合同已作废，无需重复操作');
+  if (c.signStatus === 'TERMINATED') throw fail('合同已终止，不能作废');
+  const paid = sumPaidAmount(c.schedules);
+  const effective = c.signStatus === 'SIGNED' || c.signStatus === 'RESCHEDULED';
+  if (effective && paid > 0) {
+    throw fail('该合同已收款，不能直接作废，请改用「终止」并完成退款结算');
+  }
+  const now = nowIso();
+  c.signStatus = 'VOID';
+  c.voidReason = reason;
+  c.updatedAt = now;
+  // 零付款生效合同作废：关联订单置已取消，不产生退款单
+  const o = findContractOrder(c);
+  o.status = 'CANCELLED';
+  o.cancelReason = `合同作废：${reason}`;
+  o.timeline.push({ time: now, text: `合同 ${c.contractNo} 作废：${reason}` });
+  syncContractOrderBrief(c, o);
+  save();
+  return ok({ contract: publicContract(c) }, '合同已作废（无资金结算）');
+});
+
+// 终止试算（不落库）：责任方 → 比例/可退/扣除/命中规则
+route('POST', '/api/admin/contracts/:id/terminate-quote', (req, p, body) => {
+  authAdmin(req);
+  const c = findContract(p.id);
+  const responsibility = body.responsibility === 'VENDOR' ? 'VENDOR' : 'CUSTOMER';
+  return ok({ quote: quoteTermination(c, responsibility) });
+});
+
+// 终止：已生效/已收款提前结束，一个处理函数内联动合同+订单+付款计划+退款单+时间轴（模拟事务）
+route('POST', '/api/admin/contracts/:id/terminate', (req, p, body) => {
+  const s = authAdmin(req); requireAdminRole(s);
+  const c = findContract(p.id);
+  const gate = contractActions(c, s.role === 'ADMIN');
+  if (!gate.canTerminate) throw fail(gate.blockedReason || '当前合同状态不可终止');
+
+  const reason = String(body.reason || '').trim();
+  if (!reason) throw fail('请填写终止原因');
+  const responsibility = body.responsibility === 'VENDOR' ? 'VENDOR' : 'CUSTOMER';
+
+  // 服务端二次试算，不信前端入参的比例/金额
+  const quote = quoteTermination(c, responsibility);
+  if (quote.paidAmount <= 0) throw fail('该合同尚无付款，请直接使用「作废」');
+  // 实退额允许在 (0, 已付总额] 内人工调整；我方原因锁定全额
+  let refundAmount = responsibility === 'VENDOR'
+    ? quote.paidAmount
+    : Math.min(Math.max(0, round2(Number(body.refundAmount) || 0)), quote.paidAmount);
+  if (!(refundAmount > 0)) throw fail('实退金额需大于 0');
+
+  const now = nowIso();
+  const o = findContractOrder(c);
+  const prevStatus = o.status;
+
+  // 1) 合同置终止，留痕责任方、原因、结算口径
+  c.signStatus = 'TERMINATED';
+  c.terminateResponsibility = responsibility;
+  c.terminateReason = reason;
+  c.terminatedAt = now;
+  c.updatedAt = now;
+
+  // 2) 付款计划：未到期期次冻结（不再催收），已付期次保留凭证
+  c.schedules.forEach(sc => {
+    if (sc.status !== 'PAID') {
+      sc.status = 'PENDING';
+      sc.triggerEvent = `合同终止，本期不再收款（${sc.triggerEvent}）`;
+    }
+  });
+
+  // 3) 生成待审批退款单（挂到订单上，退款管理页可检索/审批）
+  const suffix = responsibility === 'VENDOR' ? 'V' : 'C';
+  const refundNo = buildContractRefundNo(o, suffix);
+  c.refundNo = refundNo;
+  const fullReason =
+    `合同终止（${responsibility === 'VENDOR' ? '我方原因' : '客户原因'}）：${reason}` +
+    `｜${quote.ruleLabel}｜试算比例 ${Math.round(quote.ratio * 100)}%`;
+  o.refund = {
+    reason: fullReason,
+    ratio: quote.ratio,
+    applyAmount: quote.refundAmount,
+    status: 'PENDING',
+    prevStatus,
+    auditBy: '', auditNote: '',
+    refundAmount,
+    refundNo,
+    createdAt: now,
+    auditedAt: ''
+  };
+
+  // 4) 订单置退款中（退款审批通过→REFUNDED、驳回→回退 prev，沿用退款页现有流转）
+  o.status = 'REFUNDING';
+
+  // 5) 时间轴留痕
+  o.timeline.push({
+    time: now,
+    text: `合同 ${c.contractNo} 终止（${responsibility === 'VENDOR' ? '我方' : '客户'}原因），` +
+      `已付 ¥${quote.paidAmount}，申请退款 ¥${refundAmount}，待退款审批`
+  });
+  syncContractOrderBrief(c, o);
+  save();
+  return ok({ contract: publicContract(c), quote, refundNo }, '合同已终止，已生成待审批退款单');
+});
+
+// 改期：生效合同顺延表演日期，合同继续有效，款项不退、节点继续有效
+route('POST', '/api/admin/contracts/:id/reschedule', (req, p, body) => {
+  authAdmin(req);
+  const c = findContract(p.id);
+  const gate = contractActions(c, true);
+  if (!gate.canReschedule) throw fail(gate.blockedReason || '当前合同状态不可改期');
+  const reason = String(body.reason || '').trim();
+  if (!reason) throw fail('请填写改期说明');
+  const newDate = String(body.newPerformDate || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) throw fail('请选择新的表演日期');
+  const todayStr = fmtDate(new Date());
+  if (newDate < todayStr) throw fail('新表演日期不能早于今天');
+  if (newDate === c.order.performDate) throw fail('新日期与原表演日期相同，无需改期');
+  const responsibility = body.responsibility === 'CUSTOMER' ? 'CUSTOMER' : 'VENDOR';
+  const reasonType = ['WEATHER', 'APPROVAL', 'VENUE', 'OTHER'].includes(body.reasonType) ? body.reasonType : 'OTHER';
+
+  const now = nowIso();
+  const o = findContractOrder(c);
+  // 首次改期留底原日期；多次改期保留最初的原始日期
+  if (c.originalPerformDate === null || c.originalPerformDate === '') {
+    c.originalPerformDate = c.order.performDate || null;
+  }
+  c.rescheduledPerformDate = newDate;
+  c.rescheduleReason = reason;
+  c.rescheduleResponsibility = responsibility;
+  c.rescheduleReasonType = reasonType;
+  c.rescheduledAt = now;
+  c.signStatus = 'RESCHEDULED';
+  c.updatedAt = now;
+
+  // 订单表演日期更新，状态与款项不变，不产生退款
+  o.performDate = newDate;
+  o.timeline.push({
+    time: now,
+    text: `合同 ${c.contractNo} 改期：${c.originalPerformDate} → ${newDate}` +
+      `（${reasonType}｜${responsibility === 'VENDOR' ? '我方原因' : '客户原因'}：${reason}）`
+  });
+  syncContractOrderBrief(c, o);
+  save();
+  return ok({ contract: publicContract(c) }, '已改期，付款节点继续有效，订单表演日期同步更新');
+});
+
 
 route('GET', '/api/admin/schedule', (req, p, b, query) => {
   authAdmin(req);

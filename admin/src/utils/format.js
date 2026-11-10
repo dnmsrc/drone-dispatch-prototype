@@ -39,6 +39,30 @@ export const REFUND_STATUS_MAP = {
   REJECTED: { text: '已拒绝', type: 'danger' }
 }
 
+/** 合同签署状态（结束态区分作废/终止，改期为非终态） */
+export const CONTRACT_SIGN_MAP = {
+  DRAFT: { text: '草稿', type: 'info' },
+  PENDING_SIGN: { text: '待签署', type: 'warning' },
+  SIGNED: { text: '已签署', type: 'success' },
+  VOID: { text: '已作废', type: 'info' },
+  TERMINATED: { text: '已终止', type: 'danger' },
+  RESCHEDULED: { text: '已改期', color: '#8B5CF6' }
+}
+
+/** 终止 / 改期责任方 */
+export const CONTRACT_RESPONSIBILITY_MAP = {
+  CUSTOMER: { text: '客户原因' },
+  VENDOR: { text: '我方原因' }
+}
+
+/** 改期原因类型（与 H5 条款 key 对齐） */
+export const RESCHEDULE_REASON_MAP = {
+  WEATHER: { text: '天气/不可抗力' },
+  APPROVAL: { text: '备案审批' },
+  VENUE: { text: '场地原因' },
+  OTHER: { text: '其他' }
+}
+
 export const ADDON_LABELS = {
   music: '专属音乐编曲',
   narration: '现场旁白解说',

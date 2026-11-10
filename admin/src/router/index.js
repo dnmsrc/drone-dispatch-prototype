@@ -21,6 +21,11 @@ export const menuRoutes = [
     meta: { title: '订单管理', icon: 'Tickets' }
   },
   {
+    path: 'contract/list',
+    component: () => import('../views/contract/index.vue'),
+    meta: { title: '合同管理', icon: 'Document', roles: ['ADMIN'] }
+  },
+  {
     path: 'refund/list',
     component: () => import('../views/refund/list.vue'),
     meta: { title: '退款管理', icon: 'RefreshLeft' }

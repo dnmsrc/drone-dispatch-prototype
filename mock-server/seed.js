@@ -4,6 +4,7 @@
 'use strict';
 
 const profile = require('./biz/drone');
+const { splitInstallments } = require('./contracts');
 
 function pad(n) { return String(n).padStart(2, '0'); }
 function fmtDate(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
@@ -304,6 +305,215 @@ function buildConsults(now) {
   });
 }
 
+// ---------- 电子合同种子 ----------
+// 与正式 drone-dispatch-web 的 contract/mock.ts 同构：合同与订单 1:1，有效订单创建即生成合同草稿；
+// 默认两期 50%+50%（预付款/尾款）。结束态区分 VOID 作废（无资金）/ TERMINATED 终止（带结算退款）/
+// RESCHEDULED 改期（非终态，款项不退）。种子覆盖文档要求的全部演示形态。
+const PARTY_B = { name: '杭州承飞科技有限公司', creditCode: '91330108MA2H7XK51P' };
+const CONTRACT_TEMPLATE_CODE = 'STANDARD_PERFORMANCE';
+const CONTRACT_TEMPLATE_VERSION = 'v1.0';
+const CONTRACT_PAYMENT_TERMS =
+  '签约付 50% 预付款，演出前 7 天付清尾款（里程碑分期，客户主动付款，不做自动代扣）';
+
+function maskIdNo(phone) {
+  const tail = (String(phone || '').replace(/\D/g, '') || '0000').slice(-4);
+  return `330108199${tail.padStart(4, '0')}****`;
+}
+
+/** 造一份两期付款计划（50%+50%），按签署/演示形态填期次状态 */
+function buildContractSchedules(contract, order, signStatus, demo) {
+  const [sp1, sp2] = splitInstallments(contract.totalAmount, 2);
+  const signDate = fmtDate(new Date(contract.createdAt));
+  const tailDue = order.performDate
+    ? fmtDate(addDays(new Date(`${order.performDate}T00:00:00`), -7))
+    : null;
+  const mk = (no, stageName, triggerEvent, dueDate, planAmount, ratio) => ({
+    id: `${contract.id}-s${no}`,
+    installmentNo: no,
+    stageName,
+    triggerEvent,
+    dueDate,
+    ratio,
+    planAmount,
+    paidAmount: 0,
+    status: 'PENDING',
+    paidAt: null
+  });
+  const s1 = mk(1, '预付款', '合同签署完成', signDate, sp1.planAmount, sp1.ratio);
+  const s2 = mk(2, '尾款', '演出前7天', tailDue, sp2.planAmount, sp2.ratio);
+
+  if (signStatus === 'SIGNED' || signStatus === 'RESCHEDULED' || signStatus === 'TERMINATED') {
+    // 预付款一律已结清
+    s1.status = 'PAID';
+    s1.paidAmount = sp1.planAmount;
+    s1.paidAt = order.paidAt || contract.createdAt;
+    if (demo === 'pending-tail') {
+      s2.status = 'PENDING'; // 大额分期进行中：尾款待付
+    } else if (demo === 'overdue-tail') {
+      s2.status = 'OVERDUE'; // 尾款逾期（演示红色预警）
+    } else {
+      s2.status = 'PAID';
+      s2.paidAmount = sp2.planAmount;
+      s2.paidAt = order.paidAt || contract.createdAt;
+    }
+  }
+  return [s1, s2];
+}
+
+/** 从一份订单派生合同草稿（合同与订单 1:1） */
+function buildContract(order, seq, overrides = {}, demo = 'normal') {
+  const created = order.createdAt || iso(new Date());
+  const contractNo = `HT${fmtDate(new Date(created)).replace(/-/g, '')}-${String(seq).padStart(4, '0')}`;
+  const signStatus = overrides.signStatus || 'DRAFT';
+  const contract = {
+    id: `c${seq}`,
+    contractNo,
+    orderId: order.id,
+    templateCode: CONTRACT_TEMPLATE_CODE,
+    templateVersion: CONTRACT_TEMPLATE_VERSION,
+    partyAName: order.contact?.name || '客户',
+    partyAIdType: 'ID_CARD',
+    partyAIdNo: maskIdNo(order.contact?.phone),
+    partyAContact: order.contact?.name || '',
+    partyAPhone: order.contact?.phone || '',
+    partyBName: PARTY_B.name,
+    partyBCreditCode: PARTY_B.creditCode,
+    totalAmount: order.totalAmount || 0,
+    paymentTerms: CONTRACT_PAYMENT_TERMS,
+    signStatus,
+    esignFlowId: '',
+    sealId: '',
+    signedPdfUrl: '',
+    partyASignedAt: null,
+    partyBSignedAt: null,
+    signedAt: null,
+    voidReason: '',
+    terminateReason: '',
+    terminateResponsibility: '',
+    terminatedAt: null,
+    refundNo: '',
+    rescheduleReason: '',
+    rescheduleResponsibility: '',
+    originalPerformDate: null,
+    rescheduledPerformDate: null,
+    rescheduledAt: null,
+    createdAt: created,
+    updatedAt: created,
+    order: {
+      orderNo: order.id,
+      status: order.status,
+      userId: order.userId,
+      droneCount: order.droneCount,
+      duration: order.duration,
+      performDate: order.performDate,
+      timeSlot: order.timeSlot,
+      venueName: order.venue?.name || ''
+    },
+    schedules: []
+  };
+  contract.schedules = buildContractSchedules(contract, order, signStatus, demo);
+  if (signStatus === 'SIGNED' || signStatus === 'RESCHEDULED' || signStatus === 'TERMINATED') {
+    const signedAt = order.paidAt || created;
+    contract.partyASignedAt = signedAt;
+    contract.partyBSignedAt = signedAt;
+    contract.signedAt = signedAt;
+    contract.signedPdfUrl = `/api/media/contract/${contractNo}.pdf`;
+  }
+  Object.assign(contract, overrides);
+  return contract;
+}
+
+/**
+ * 生成全量合同种子。有效订单（非取消、非未支付）按下单时间生成合同；
+ * 再挑选特定订单覆盖「已作废 / 已终止（客户&我方）/ 已改期」演示形态。
+ */
+function buildContracts(orders) {
+  const valid = orders.filter(
+    o => o.status !== 'CANCELLED' && !(o.status === 'PENDING_PAY' && !o.payChannel)
+  );
+  // 已签大额合同候选：安排尾款待付/逾期两种形态
+  const signedLarge = valid
+    .map((o, i) => ({ o, i }))
+    .filter(x => (x.o.totalAmount || 0) >= 50000 && ['ACCEPTED', 'IN_SERVICE', 'COMPLETED', 'REVIEWED', 'REFUNDING'].includes(x.o.status));
+  const pendingTailIdx = signedLarge.length ? signedLarge[signedLarge.length - 1].i : -1;
+  const overdueTailIdx = signedLarge.length > 1 ? signedLarge[0].i : -1;
+
+  const contracts = valid.map((order, i) => {
+    const seq = i + 1;
+    // 推导初始签署状态（对齐 web mock.deriveSignStatus）
+    let signStatus = 'SIGNED';
+    if (order.status === 'PENDING_PAY') signStatus = 'DRAFT';
+    else if (order.status === 'PENDING_ACCEPT') signStatus = seq % 3 === 0 ? 'PENDING_SIGN' : 'SIGNED';
+    const demo = i === pendingTailIdx ? 'pending-tail' : i === overdueTailIdx ? 'overdue-tail' : 'normal';
+    return buildContract(order, seq, { signStatus }, demo);
+  });
+
+  // —— 覆盖特定演示形态：用确定的订单做合同动作快照（不改动订单主数据，仅合同侧留痕）——
+  const findOrder = (pred) => valid.find(pred);
+  let extraSeq = contracts.length;
+
+  // 1) 已作废（零付款生效合同，无资金动作）
+  const voidOrder = findOrder(o => o.status === 'PENDING_ACCEPT');
+  if (voidOrder) {
+    const c = contracts.find(x => x.orderId === voidOrder.id);
+    if (c) {
+      c.signStatus = 'VOID';
+      c.voidReason = '客户资料待补充，合同暂缓签署，运营作废后重新拟定';
+      c.updatedAt = iso(addDays(new Date(c.createdAt), 1));
+      c.schedules.forEach(s => { s.status = 'PENDING'; s.paidAmount = 0; s.paidAt = null; });
+      c.partyASignedAt = c.partyBSignedAt = c.signedAt = null;
+      c.signedPdfUrl = '';
+    }
+  }
+
+  // 2) 已终止 · 客户原因（带 PENDING 退款单，退款管理页可见）
+  const custOrder = findOrder(o => o.status === 'ACCEPTED' && (o.totalAmount || 0) >= 30000);
+  if (custOrder) {
+    extraSeq += 1;
+    const c = buildContract(custOrder, extraSeq, {
+      signStatus: 'TERMINATED',
+      terminateResponsibility: 'CUSTOMER',
+      terminateReason: '客户企业活动预算调整，提前解除合同',
+      terminatedAt: iso(addDays(new Date(), -1)),
+      refundNo: `R${custOrder.id.slice(1)}C`
+    }, 'normal');
+    c.contractNo = `HT${fmtDate(new Date()).replace(/-/g, '')}-${String(extraSeq).padStart(4, '0')}`;
+    contracts.push(c);
+  }
+
+  // 3) 已终止 · 我方原因（全额退，零扣除）
+  const vendorOrder = findOrder(o => o.status === 'ACCEPTED' && o.id !== (custOrder && custOrder.id) && (o.totalAmount || 0) >= 20000);
+  if (vendorOrder) {
+    extraSeq += 1;
+    const c = buildContract(vendorOrder, extraSeq, {
+      signStatus: 'TERMINATED',
+      terminateResponsibility: 'VENDOR',
+      terminateReason: '空域审批未按时取得，我方无法履行，全额退还已付费用',
+      terminatedAt: iso(addDays(new Date(), -2)),
+      refundNo: `R${vendorOrder.id.slice(1)}V`
+    }, 'normal');
+    c.contractNo = `HT${fmtDate(new Date()).replace(/-/g, '')}-${String(extraSeq).padStart(4, '0')}`;
+    contracts.push(c);
+  }
+
+  // 4) 已改期（非终态：原日期留底、新日期、责任方、原因类型，款项不退）
+  const rsOrder = findOrder(o => o.status === 'ACCEPTED');
+  if (rsOrder) {
+    const c = contracts.find(x => x.orderId === rsOrder.id && x.signStatus === 'SIGNED');
+    if (c) {
+      c.originalPerformDate = rsOrder.performDate;
+      c.rescheduledPerformDate = fmtDate(addDays(new Date(`${rsOrder.performDate}T00:00:00`), 7));
+      c.rescheduleResponsibility = 'VENDOR';
+      c.rescheduleReason = '气象预报显示当日风速超限，经沟通顺延，重新备案审批';
+      c.rescheduledAt = iso(addDays(new Date(), -1));
+      c.signStatus = 'RESCHEDULED';
+      c.updatedAt = c.rescheduledAt;
+    }
+  }
+
+  return contracts;
+}
+
 function buildSeed() {
   const now = new Date();
   const v = VENUES;
@@ -431,8 +641,9 @@ function buildSeed() {
     users: JSON.parse(JSON.stringify(USERS)),
     orders,
     consults: buildConsults(now),
+    contracts: buildContracts(orders),
     poiPool: POI_POOL
   };
 }
 
-module.exports = { buildSeed, buildDicts, profile, PRICE_RULES, REFUND_RULES, ADMINS, HOLIDAYS, fmtDate, addDays, CONSULT_STATUS_TEXT, DISPATCH_TERMS, DISPATCH_TERM_SPEC };
+module.exports = { buildSeed, buildDicts, buildContracts, profile, PRICE_RULES, REFUND_RULES, ADMINS, HOLIDAYS, fmtDate, addDays, CONSULT_STATUS_TEXT, DISPATCH_TERMS, DISPATCH_TERM_SPEC };
