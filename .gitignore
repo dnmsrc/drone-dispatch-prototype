@@ -1,0 +1,57 @@
+# ============================================================
+# SkyShow drone dispatch - prototype repo ignore rules
+# Scope: this repo tracks ONLY the prototype project.
+# Principle: source & docs in repo; dependencies, build output,
+#            delivery artifacts, runtime data and logs are ignored
+#            (all rebuildable from source).
+# ============================================================
+
+# -- Dependencies --
+node_modules/
+.pnpm-store/
+.pnp.*
+.yarn/cache/
+
+# -- Build output --
+admin/dist/
+h5/dist/
+h5/unpackage/
+tools/desktop/dist/
+tools/desktop/release/
+tools/e2e/reports/
+
+# -- Delivery artifacts (the sibling 交付/ folder is outside this repo) --
+
+# -- Runtime data & logs --
+# mock runtime data (data/) and verification data (data-verify/, rebuilt by
+# reset-verify-db.mjs); neither is committed
+mock-server/data/
+mock-server/data-verify/
+# screenshot probe temp workspace (formal e2e screenshots live under tools/e2e/shots/)
+/.shots-tmp/
+*.log
+*.tmp
+
+# -- Editor / OS --
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -- Python (a few helper scripts under tools) --
+__pycache__/
+*.pyc
+
+# -- Backup files (git history replaces them; full bundle backups stay out of repo) --
+*.bak
+*.orig
+*.bundle
+
+# -- Internal, NOT open-sourced (kept on the developer machine only; never commit) --
+# design docs / PRD / regulation research / specs
+docs/
+tools/e2e/docs/
+# walk-through & acceptance screenshots and probe output (rebuilt locally by e2e)
+shots/
+tools/e2e/shots/
