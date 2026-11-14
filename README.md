@@ -4,26 +4,58 @@
 
 > 演示版：**除不含真实后端与真实支付外，页面效果与交互流程与最终交付一致。** 两端通过本地 Mock Server 真实联动（H5 下单 → 管理端接单 → H5 状态同步）。
 >
-> 本目录是**已验收的原型**，冻结为可演示、可重新打包的状态；正式版前后端在仓库根目录的 `drone-dispatch-web/`、`drone-dispatch-h5/`、`drone-dispatch-server/`，整体结构见根目录 `README.md`。本文件所有命令都**在本目录（`drone-dispatch-prototype/`）下执行**。
+> 本仓是**已验收的原型**，冻结为可演示、可重新打包的状态，作为正式版三个端的共同设计基线。本文件所有命令都**在仓库根目录**下执行。
+
+## 项目全貌与仓库分布
+
+整个无人机派单系统在 GitHub 上由 [`dnmsrc`](https://github.com/dnmsrc) 发布为 **4 个互相独立、彼此平级的 Public 仓库**，各自有独立的提交历史、分支与发布节奏，**不是**嵌套的父子目录。本仓是其中的原型仓：
+
+| # | GitHub 仓库（点击直达） | 角色 / 技术栈 |
+|---|---|---|
+| 1 | **[`dnmsrc/drone-dispatch-prototype`](https://github.com/dnmsrc/drone-dispatch-prototype)（本仓）** | 原型演示工程：管理端 + 用户端 H5 + 零依赖 Mock Server + 自动化测试 + Electron 桌面打包 |
+| 2 | [`dnmsrc/drone-dispatch-web`](https://github.com/dnmsrc/drone-dispatch-web) | 正式版 Web 管理后台（Vue3 + TS + Vite + Element Plus + Sass） |
+| 3 | [`dnmsrc/drone-dispatch-h5`](https://github.com/dnmsrc/drone-dispatch-h5) | 正式版用户端 H5 / 微信小程序（uni-app Vue3 + Vite） |
+| 4 | [`dnmsrc/drone-dispatch-server`](https://github.com/dnmsrc/drone-dispatch-server) | 正式版服务端（Java 21 + Spring Boot + Maven + MySQL 8.4） |
+
+各仓库地址（均为 **Public**，任何人无需登录即可访问、克隆）：
+
+- 原型演示工程（本仓）：`https://github.com/dnmsrc/drone-dispatch-prototype`
+- Web 管理后台：`https://github.com/dnmsrc/drone-dispatch-web`
+- H5 / 小程序：`https://github.com/dnmsrc/drone-dispatch-h5`
+- 服务端：`https://github.com/dnmsrc/drone-dispatch-server`
+
+> **LICENSE 现状**：四个仓暂未附带许可证文件。代码虽公开可看，但默认仍保留全部版权，尚未明确授予他人使用 / 修改 / 再分发的权利。
+>
+> **各端进度**以各自仓库 README 为准；本原型仓可完整跑通「H5 下单 → 管理端接单执行 → 评价 / 退款 / 拒单」全链路。设计文档、走查 / 验收截图与 AI 协作约定不公开，仅保留在开发者本机，已由 `.gitignore` 忽略。
+
+把四个仓克隆到同一本机工作区即可平级联调（各仓目录名与仓库名一致）：
+
+```bash
+mkdir 无人机派单系统 && cd 无人机派单系统
+git clone https://github.com/dnmsrc/drone-dispatch-prototype.git
+git clone https://github.com/dnmsrc/drone-dispatch-web.git
+git clone https://github.com/dnmsrc/drone-dispatch-h5.git
+git clone https://github.com/dnmsrc/drone-dispatch-server.git
+```
 
 ## 目录结构（原型内部）
 
 ```
-drone-dispatch-prototype/
-├── admin/                     # 管理端（Vue3 + Element Plus，若伊风格）
-├── h5/                        # 用户端（uni-app vue3 + vite，H5 可编译微信小程序）
-├── mock-server/               # 零依赖 Node Mock Server（8090 = API+用户端，8080 = API+管理端）
-├── tools/e2e/                 # 自动化测试：lib 公共库 + cases 用例 + run-suite.mjs 执行器
-├── tools/desktop/             # 桌面打包工程（Electron）：产物进 交付/drone-dispatch-prototype/
-├── start-all.bat              # 开发时一键启动三端（打开 3 个命令行窗口）
-└── README.md                  # 本文件
+drone-dispatch-prototype/        ← 本仓根目录
+├── admin/                       # 管理端（Vue3 + Element Plus，若伊风格）
+├── h5/                          # 用户端（uni-app vue3 + vite，H5 可编译微信小程序）
+├── mock-server/                 # 零依赖 Node Mock Server（8090 = API+用户端，8080 = API+管理端）
+├── tools/e2e/                   # 自动化测试：lib 公共库 + cases 用例 + run-suite.mjs 执行器
+├── tools/desktop/               # 桌面打包工程（Electron）：产物进本机 交付/ 目录（不入库）
+├── start-all.bat                # 开发时一键启动三端（打开 3 个命令行窗口）
+└── README.md                    # 本文件
 ```
 
 > 说明：设计文档（`docs/`）与走查 / 验收截图（`shots/`、`tools/e2e/shots/`）仅保留在开发者本机，已通过 `.gitignore` 忽略，不随仓库分发；e2e 运行时仍会在本地重新生成 `shots/`。
 
 ## 快速开始（开发）
 
-三个终端分别执行（或双击本目录 `start-all.bat`）：
+三个终端分别执行（或双击本仓根目录的 `start-all.bat`）：
 
 ```bash
 # 1. Mock Server（先启动，零依赖；同时托管两端构建产物）
@@ -38,7 +70,9 @@ cd h5 && npm install && npm run dev:h5
 
 免 dev server 模式（推荐给验收/演示）：先 `cd h5 && npm run build:h5`、`cd admin && npm run build`，之后只启动 Mock Server —— 它把 H5 托管在 8090、管理端托管在 8080，同源访问 API 无需代理。
 
-## 打包成验收程序（生成 交付/drone-dispatch-prototype/ 的东西）
+## 打包成验收程序
+
+打包产物输出到**本仓之外**的本机 `交付/drone-dispatch-prototype/` 目录（该目录不入库）。在本仓 `tools/desktop/` 下执行：
 
 ```bash
 cd tools/desktop
@@ -61,11 +95,10 @@ npm run dist:dir      # 免安装版：electron-builder --win dir → ../../../�
 - 打包配置里 `signAndEditExecutable: false`：本机没有创建符号链接的权限，下载 winCodeSign 会失败；代价是 exe 用 Electron 默认图标、不带版本签名，不影响运行。
 - 自测 exe 时注意：若当前 shell 继承了 `ELECTRON_RUN_AS_NODE=1`（在 Electron 应用里跑命令会继承），启动会变成 node 模式直接退出——用 `env -u ELECTRON_RUN_AS_NODE ./星穹SkyShow演示.exe` 或在 PowerShell 里 `Remove-Item Env:ELECTRON_RUN_AS_NODE` 后再启动。
 
-### 已知问题：在本项目目录内双击 exe 会报 “NSIS Error”（2026-11 实测）
+### 已知问题：在开发机项目目录内双击 exe 会报 “NSIS Error”
 
-- **原因**：`D:\工作\...` 这个项目目录被 DSH 加上了沙箱 ACL（文件上多了一条 `S-1-4-189052566-668783505` 条目）。目录内的 portable exe 由资源管理器启动时，NSIS 自解压 stub 会失败并弹 “NSIS Error”；同一份文件复制到工作目录之外则秒开。**与程序本身无关，客户机不受此影响。**
-- **验证方法**：把 `星穹SkyShow演示.exe` 复制到 `D:\SkyShow演示\` 双击，正常出界面。
-- **对策**：本机演示统一从 `D:\SkyShow演示\` 运行；`交付/` 只作打包产物与发客户用，不要在交付目录里直接双击运行。
+- **原因**：受开发机沙箱 ACL 影响，项目目录内的 portable exe 由资源管理器启动时，NSIS 自解压 stub 可能失败并弹 “NSIS Error”；同一份文件复制到工作目录之外则秒开。**与程序本身无关，普通客户机不受此影响。**
+- **对策**：本机演示统一把程序复制到工作目录之外（如 `D:\SkyShow演示\`）运行；`交付/` 只作打包产物与发客户用，不要在交付目录里直接双击运行。
 
 ### 已知问题：客户机双击 exe 报 “NSIS Error / Error writing temporary file”
 
@@ -91,7 +124,7 @@ node run.mjs                       # 原有全流程走查（17 步，逐页截�
 
 ## 验收（给客户）
 
-`../交付/drone-dispatch-prototype/` 里三个文件按机器情况三选一（详细说明见 `../交付/drone-dispatch-prototype/使用说明.txt`）：
+本机 `交付/drone-dispatch-prototype/` 里三个文件按机器情况三选一（详细说明见该目录的 `使用说明.txt`）：
 
 1. **正常机器**：双击 `星穹SkyShow演示.exe`（未签名，首次可能弹 SmartScreen「未知发布者」→ 点「更多信息 → 仍要运行」）。
 2. **双击 exe 弹 NSIS Error**：把 `双击这里启动.bat` 和 exe 放同一目录，改双击 bat。
@@ -138,9 +171,9 @@ cd h5 && npm run build:mp-weixin
 
 ## 与正式交付的差异（演示约束）
 
-| 环节 | 演示版 | 正式版接入点 |
+| 环节 | 演示版（本仓） | 正式版接入点 |
 |---|---|---|
-| 后端 | 本地零依赖 Mock Server（内存 + JSON 文件） | `drone-dispatch-server/` 真实后端 + MySQL，接口路径已按统一的 `/api` 接口约定对齐 |
+| 后端 | 本地零依赖 Mock Server（内存 + JSON 文件） | [`drone-dispatch-server`](https://github.com/dnmsrc/drone-dispatch-server) 真实后端 + MySQL，接口路径已按统一的 `/api` 接口约定对齐 |
 | 支付 | 模拟收银台（成功/失败按钮） | 微信支付 JSAPI / 支付宝手机网站支付 + 异步回调 |
 | 微信登录 | 模拟授权弹窗 | wx.login code → code2session |
 | 地图 | 模拟高德选点与联想 | 高德 JS API（create 页 onMapTap/onSearch 预留接入位） |
