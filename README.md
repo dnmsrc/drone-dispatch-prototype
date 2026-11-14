@@ -15,11 +15,11 @@ drone-dispatch-prototype/
 ├── mock-server/               # 零依赖 Node Mock Server（8090 = API+用户端，8080 = API+管理端）
 ├── tools/e2e/                 # 自动化测试：lib 公共库 + cases 用例 + run-suite.mjs 执行器
 ├── tools/desktop/             # 桌面打包工程（Electron）：产物进 交付/drone-dispatch-prototype/
-├── docs/                      # PRD 与规范（PRD.md、分配模型、咨询流程、确认门等）
-├── shots/                     # 走查与验收截图
 ├── start-all.bat              # 开发时一键启动三端（打开 3 个命令行窗口）
 └── README.md                  # 本文件
 ```
+
+> 说明：设计文档（`docs/`）与走查 / 验收截图（`shots/`、`tools/e2e/shots/`）仅保留在开发者本机，已通过 `.gitignore` 忽略，不随仓库分发；e2e 运行时仍会在本地重新生成 `shots/`。
 
 ## 快速开始（开发）
 
@@ -83,11 +83,11 @@ node run-suite.mjs --list          # 列出全部用例（id/覆盖点/标签）
 node run-suite.mjs --tag=smoke     # 跑冒烟集（双端核心链路）
 node run-suite.mjs                 # 跑全量，产出 reports/junit.xml + report.json + report.md
 node run-suite.mjs --impact admin/src/views/schedule/index.vue   # 按改动文件挑相关用例
-node run.mjs                       # 原有全流程走查（17 步，逐页截图到 shots/）
+node run.mjs                       # 原有全流程走查（17 步，逐页截图到本地 shots/，不入库）
 ```
 
 前置：Mock Server 正在 8090/8080 运行；判据跑的是**构建产物**，改源码后必须重新 build。
-测试框架约定（如何新增用例、数据隔离、稳定性技巧）见 `tools/e2e/docs/test-cases.md`。
+测试框架约定（如何新增用例、数据隔离、稳定性技巧）的文档仅留存本机，不在开源仓库内；用例本身见 `tools/e2e/cases`，执行器用法以 `run-suite.mjs --help` 为准。
 
 ## 验收（给客户）
 
@@ -140,7 +140,7 @@ cd h5 && npm run build:mp-weixin
 
 | 环节 | 演示版 | 正式版接入点 |
 |---|---|---|
-| 后端 | 本地零依赖 Mock Server（内存 + JSON 文件） | `drone-dispatch-server/` 真实后端 + MySQL，接口路径已按 PRD §11 约定 |
+| 后端 | 本地零依赖 Mock Server（内存 + JSON 文件） | `drone-dispatch-server/` 真实后端 + MySQL，接口路径已按统一的 `/api` 接口约定对齐 |
 | 支付 | 模拟收银台（成功/失败按钮） | 微信支付 JSAPI / 支付宝手机网站支付 + 异步回调 |
 | 微信登录 | 模拟授权弹窗 | wx.login code → code2session |
 | 地图 | 模拟高德选点与联想 | 高德 JS API（create 页 onMapTap/onSearch 预留接入位） |
